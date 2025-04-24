@@ -5,6 +5,7 @@ import (
 	repository "api/repositories/user/read"
 	"api/validators"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,45 +13,73 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-
-func SignIn(c *gin.Context){
+func SignIn(c *gin.Context) {
 	var body validators.SignInInput
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, response.Response{
+			Status:  400,
+			Message: "Corpo JSON OU FORMDATA REQUERIDO",
+			Data:    nil,
+			Error: err.Error(),
+		})
+		return
+	}
 
 	if err := validators.Validate.Struct(body); err != nil {
 		errors := validators.FormatValidationError(err)
-		c.JSON(http.StatusBadRequest,  response.Response{
+		c.JSON(http.StatusBadRequest, response.Response{
 			Status:  400,
 			Message: "CAMPO INVALIDO",
 			Data:    nil,
-			Error: errors,
+			Error:   errors,
 		})
 		return
 	}
 
-	user, err := repository.FindUserByEmail(body.Email);
+	user, err := repository.FindUserByEmail(body.Email)
 
-	if user.ID == 0{
-		c.JSON(http.StatusBadRequest,  response.Response{
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, response.Response{
 			Status:  401,
 			Message: "Dados invalidos",
 			Data:    nil,
-			Error: err,
+			Error:   err,
 		})
 		return
 	}
 
-  
-	 if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)) != nil{
-		c.JSON(http.StatusBadRequest,  response.Response{
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)) != nil {
+		c.JSON(http.StatusBadRequest, response.Response{
 			Status:  401,
 			Message: "Dados invalidos",
 			Data:    nil,
 		})
 		return
-	 }
+	}
 
-	 token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims(
-		"foo": "bar",
-		"nbf": time.Date(2025, 10, 10, 12, 0,0,0, time.UTC).Unix(),
-	 ))
-}  
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
+		jwt.MapClaims{
+			"sub": user.ID,
+			"exp":      time.Now().Add(time.Hour * 24 * 30).Unix(),
+		})
+
+	toStringToken, err := token.SignedString([]byte(os.Getenv("SECRET")));
+
+	if err != nil{
+		c.JSON(http.StatusInternalServerError, response.Response{
+			Status:  500,
+			Message: "ERRO AO FAZER LOGIN",
+			Data:    nil,
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response.Response{
+		Status:  201,
+		Message: "Loginefetuado com sucesso",
+		Data:  response.TokenResponse{
+			Token: toStringToken,
+		},
+	})
+}
