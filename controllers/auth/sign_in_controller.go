@@ -75,6 +75,9 @@ func SignIn(c *gin.Context) {
 		return
 	}
 
+	c.SetSameSite(http.SameSiteDefaultMode)
+	c.SetCookie("Authorization", toStringToken, 3600 * 24 * 30, "", "", false, true)
+
 	c.JSON(http.StatusCreated, response.Response{
 		Status:  201,
 		Message: "Loginefetuado com sucesso",
